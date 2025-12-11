@@ -91,5 +91,6 @@
     <None Include="RCa40900" />
     <None Include="DevLog_12.10.md" />
     <None Include=".gitignore" />
+    <None Include="DevLog.md" />
   </ItemGroup>
 </Project>

@@ -39,6 +39,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include=".gitignore" />
+    <None Include="DevLog.md" />
     <None Include="DevLog_12.10.md" />
     <None Include="RCa40900" />
   </ItemGroup>
