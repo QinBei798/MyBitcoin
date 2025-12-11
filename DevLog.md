@@ -71,8 +71,7 @@ Bytes Hash160(const Bytes& data) {
 - [x] 定义比特币 **区块头 (Block Header)** 结构 (共 80 字节)。
 - [x] 实现 **序列化 (Serialization)** 逻辑，支持 Little-Endian 字节序拼接。
 - [x] 实现 **工作量证明 (PoW)** 挖矿算法：
-    - 不断递增 
-once。
+    - 不断递增nonce。
     - 计算 Hash256(BlockHeader)。
     - 验证哈希值是否满足难度目标 (前导零检查)。
 - [x] 编写 	est_block.cpp 验证挖矿流程。
