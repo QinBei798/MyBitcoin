@@ -112,6 +112,32 @@ void Block::Mine(uint32_t difficulty_zeros) {
 - **Target**: 2 leading zeros
 - **Result**: Mining Test Passed!
 
-### 🚀 下一步计划
-- 实现 Blockchain 类，将挖出的 Block 串联成链。
-- 实现最长链原则 (Longest Chain Rule) 的基础逻辑。
+
+---
+
+## 📅 2025-12-11 | 交易结构与数字签名 (Transaction & ECDSA)
+
+### 📝 今日进展
+- [x] 定义 **交易 (Transaction)** 核心结构：`TxIn` (输入) 与 `TxOut` (输出)。
+- [x] 完善 **钱包 (Wallet)** 功能：集成 OpenSSL 实现 **ECDSA 签名**与**验签**。
+- [x] 实现交易序列化 (`Serialize`) 与 交易ID计算 (`GetId`)。
+- [x] 编写 `test_transaction.cpp` 模拟 "Alice 签名 -> 矿工验证" 的完整流程。
+
+### 💻 技术细节
+
+**1. 交易模型 (`src/Core/Transaction.h`)**
+采用了经典的 UTXO 模型结构：
+```cpp
+struct TxIn {
+    Bytes prevTxId;       // 引用上一笔交易 Hash
+    uint32_t prevIndex;   // 引用上一笔交易的 Output 索引
+    Bytes signature;      // 解锁脚本 (ScriptSig)
+    Bytes publicKey;      // 公钥
+};
+
+struct TxOut {
+    int64_t value;        // 转账金额 (Satoshi)
+    std::string address;  // 锁定脚本 (ScriptPubKey)
+};
+
+---
