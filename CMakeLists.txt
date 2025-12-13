@@ -70,3 +70,10 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_transaction.cpp")
     target_link_libraries(test_transaction OpenSSL::SSL OpenSSL::Crypto)
     auto_copy_openssl_dlls(test_transaction)
 endif()
+
+# 新增 test_blockchain 目标
+if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_blockchain.cpp")
+    add_executable(test_blockchain tests/test_blockchain.cpp ${SRC_FILES})
+    target_link_libraries(test_blockchain OpenSSL::SSL OpenSSL::Crypto)
+    auto_copy_openssl_dlls(test_blockchain)
+endif()

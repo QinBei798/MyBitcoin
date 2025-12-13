@@ -15,6 +15,20 @@ Block::Block(int32_t ver, const Bytes& prev, const Bytes& root, uint32_t time, u
     : version(ver), prevBlockHash(prev), merkleRoot(root), timestamp(time), bits(difficulty_bits), nonce(0) {
 }
 
+void Block::AddTransaction(const Transaction& tx) {
+    transactions.push_back(tx);
+}
+
+void Block::FinalizeAndMine(uint32_t difficulty_zeros) {
+    // 1. 在挖矿前，根据当前的交易列表计算 Merkle Root 并填入区块头
+    if (!transactions.empty()) {
+        merkleRoot = ComputeMerkleRoot(transactions);
+    }
+
+    // 2. 调用之前的挖矿逻辑
+    Mine(difficulty_zeros);
+}
+
 Bytes Block::Serialize() const {
     Bytes data;
     // 必须严格按照比特币协议顺序拼接这 6 个字段

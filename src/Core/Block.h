@@ -5,6 +5,8 @@
 #include <vector>
 #include <string>
 #include "../Crypto/Hash.h" // 引用昨天的成果
+#include "Transaction.h" // 新增
+#include "Merkle.h"      // 新增
 
 class Block {
 public:
@@ -16,11 +18,19 @@ public:
     uint32_t timestamp;         // 时间戳
     uint32_t bits;              // 难度目标 (Target)
     uint32_t nonce;             // 随机数 (矿工唯一能改的东西)
+    // [新增] 交易列表本体
+    std::vector<Transaction> transactions;
 
     // --- 构造函数 ---
     Block(int32_t ver, const Bytes& prev, const Bytes& root, uint32_t time, uint32_t difficulty_bits);
 
     // --- 2. 核心功能 ---
+    // 
+    // [新增] 添加交易
+    void AddTransaction(const Transaction& tx);
+
+    // [修改] 挖矿前，先计算 Merkle Root
+    void FinalizeAndMine(uint32_t difficulty_zeros);
 
     // 序列化：将区块头转为字节流 (用于计算哈希)
     Bytes Serialize() const;
