@@ -140,4 +140,33 @@ struct TxOut {
     std::string address;  // 锁定脚本 (ScriptPubKey)
 };
 
+
 ---
+
+## 📅 2025-12-13 | 区块链管理与默克尔树 (Blockchain & Merkle Tree)
+
+### 📝 今日进展
+- [x] 实现 **Merkle Tree** 根哈希计算逻辑，确保区块内交易数据的完整性。
+- [x] 升级 `Block` 类：新增交易列表存储，并在挖矿前自动计算 Merkle Root。
+- [x] 实现 **Blockchain** 类：
+    - 创世区块 (Genesis Block) 的自动生成。
+    - `AddBlock` 接口：实现全节点级别的区块验证逻辑。
+    - 链式存储结构 `std::vector<Block> chain`。
+
+### 💻 技术细节
+
+**1. 默克尔树计算 (`src/Core/Merkle.cpp`)**
+实现了标准的比特币 Merkle Tree 算法：自底向上，两两配对哈希。
+```cpp
+// 核心逻辑：层层向上计算 Hash256(Left + Right)
+while (hashes.size() > 1) {
+    if (hashes.size() % 2 != 0) hashes.push_back(hashes.back()); // 奇数补齐
+    
+    std::vector<Bytes> newLevel;
+    for (size_t i = 0; i < hashes.size(); i += 2) {
+        Bytes concat = hashes[i]; 
+        concat.insert(concat.end(), hashes[i+1].begin(), hashes[i+1].end());
+        newLevel.push_back(Hash256(concat)); // 双重哈希
+    }
+    hashes = newLevel;
+}
