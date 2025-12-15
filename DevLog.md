@@ -170,3 +170,21 @@ while (hashes.size() > 1) {
     }
     hashes = newLevel;
 }
+
+---
+
+## 📅 2025-12-15 | UTXO 模型与防双花机制 (UTXO & Double Spend)
+
+### 📝 今日进展
+- [x] 重构 `Blockchain` 类，引入 **UTXO Set** (未花费交易输出集合) 来追踪全网资金状态。
+- [x] 实现 **原子性状态更新** (`ApplyBlockToUTXO`)：使用“影子副本”机制，确保区块验证失败时状态不被污染。
+- [x] 实现 **防双花逻辑**：在交易验证阶段，强制检查 Input 引用的 UTXO 是否存在，并在花费后立即销毁。
+- [x] 编写 `test_blockchain.cpp` 进行攻击模拟测试。
+
+### 💻 技术细节
+
+**1. UTXO 核心设计 (`src/Core/Blockchain.h`)**
+使用 `std::map` 维护全网“活着的”资金：
+```cpp
+// Key: "TxID_OutputIndex", Value: TxOut (金额+地址)
+std::map<std::string, TxOut> utxoSet;
