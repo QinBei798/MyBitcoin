@@ -1,4 +1,5 @@
 ﻿#include "Transaction.h"
+#include "../Utils/Serialization.h"
 #include <cstring>
 
 // 辅助工具：写入整数
@@ -38,4 +39,50 @@ Bytes Transaction::Serialize() const {
 
 Bytes Transaction::GetId() const {
     return Hash256(Serialize());
+}
+
+void Transaction::Save(std::ostream& os) const {
+    // 1. Inputs
+    WriteInt(os, (uint32_t)inputs.size());
+    for (const auto& in : inputs) {
+        WriteBytes(os, in.prevTxId);
+        WriteInt(os, in.prevIndex);
+        WriteBytes(os, in.signature);
+        WriteBytes(os, in.publicKey);
+    }
+    // 2. Outputs
+    WriteInt(os, (uint32_t)outputs.size());
+    for (const auto& out : outputs) {
+        WriteInt(os, out.value);
+        WriteString(os, out.address);
+    }
+    // 3. LockTime
+    WriteInt(os, lockTime);
+}
+
+void Transaction::Load(std::istream& is) {
+    inputs.clear();
+    outputs.clear();
+
+    uint32_t inCount;
+    ReadInt(is, inCount);
+    for (uint32_t i = 0; i < inCount; i++) {
+        TxIn in;
+        ReadBytes(is, in.prevTxId);
+        ReadInt(is, in.prevIndex);
+        ReadBytes(is, in.signature);
+        ReadBytes(is, in.publicKey);
+        inputs.push_back(in);
+    }
+
+    uint32_t outCount;
+    ReadInt(is, outCount);
+    for (uint32_t i = 0; i < outCount; i++) {
+        TxOut out;
+        ReadInt(is, out.value);
+        ReadString(is, out.address);
+        outputs.push_back(out);
+    }
+
+    ReadInt(is, lockTime);
 }

@@ -31,6 +31,9 @@ public:
 
     // 计算交易 ID (即 Hash256(Serialize))
     Bytes GetId() const;
+    // [新增] 序列化到文件流
+    void Save(std::ostream& os) const;
+    void Load(std::istream& is);
 };
 
 #endif //BITCOIN_CORE_TRANSACTION_H

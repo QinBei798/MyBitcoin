@@ -43,6 +43,10 @@ public:
 
     // 辅助：检查当前哈希是否满足难度
     bool CheckPoW(uint32_t difficulty_bits) const;
+
+    // [新增]
+    void Save(std::ostream& os) const;
+    void Load(std::istream& is);
 };
 
 #endif //BITCOIN_CORE_BLOCK_H

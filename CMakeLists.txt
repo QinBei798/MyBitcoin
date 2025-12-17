@@ -77,3 +77,24 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_blockchain.cpp")
     target_link_libraries(test_blockchain OpenSSL::SSL OpenSSL::Crypto)
     auto_copy_openssl_dlls(test_blockchain)
 endif() 
+
+# 新增 test_persistence 目标
+if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_persistence.cpp")
+    add_executable(test_persistence tests/test_persistence.cpp ${SRC_FILES})
+    target_link_libraries(test_persistence OpenSSL::SSL OpenSSL::Crypto)
+    auto_copy_openssl_dlls(test_persistence)
+endif() 
+
+# --- 新增: 钱包持久化测试 ---
+if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_wallet_persistence.cpp")
+    add_executable(test_wallet_p tests/test_wallet_persistence.cpp ${SRC_FILES})
+    target_link_libraries(test_wallet_p OpenSSL::SSL OpenSSL::Crypto)
+    auto_copy_openssl_dlls(test_wallet_p)
+endif()
+
+# 动态难度测试
+if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_difficulty.cpp")
+    add_executable(test_difficulty tests/test_difficulty.cpp ${SRC_FILES})
+    target_link_libraries(test_difficulty OpenSSL::SSL OpenSSL::Crypto)
+    auto_copy_openssl_dlls(test_difficulty)
+endif()

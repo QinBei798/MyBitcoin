@@ -4,17 +4,25 @@
 #include "../Crypto/Hash.h"
 #include <openssl/ec.h>
 #include <openssl/obj_mac.h> // NID_secp256k1
+#include <string>
 
 class Wallet {
 private:
     EC_KEY* pKey; // OpenSSL 的 ECC 密钥结构体
-
-public:
-    Wallet();
-    ~Wallet();
+    std::string filename; // 钱包文件名
 
     // 生成新的随机私钥
     void GenerateNewKey();
+
+public:
+    // [修改] 构造函数带默认文件名
+    explicit Wallet(const std::string& file = "wallet.dat");
+    ~Wallet();
+
+    // [新增] 保存与加载
+    void Save();
+    bool Load();
+
 
     // 获取公钥 (字节流形式)
     Bytes GetPublicKey() const;

@@ -2,9 +2,27 @@
 #include "Base58.h"
 #include <iostream>
 #include <openssl/ecdsa.h>
+#include <openssl/pem.h>
 
-Wallet::Wallet() {
+Wallet::Wallet(const std::string& file) : filename(file) {
     pKey = nullptr;
+
+    // 1. 尝试打开文件
+    FILE* fp = fopen(filename.c_str(), "r");
+    if (fp) {
+        fclose(fp);
+        // 如果文件存在，尝试加载
+        if (Load()) {
+            return; // 加载成功，直接返回
+        }
+        else {
+            std::cerr << "Warning: Failed to load existing wallet. Creating new one." << std::endl;
+        }
+    }
+
+    // 2. 如果文件不存在或加载失败，生成新的并保存
+    GenerateNewKey();
+    Save();
 }
 
 Wallet::~Wallet() {
@@ -27,6 +45,40 @@ void Wallet::GenerateNewKey() {
 
     // 设置为压缩格式 (现代比特币标准，虽然 v0.1 是非压缩的，但我们用现代的更好)
     EC_KEY_set_conv_form(pKey, POINT_CONVERSION_COMPRESSED);
+}
+
+// 保存私钥到文件 (PEM格式)
+void Wallet::Save() {
+    if (!pKey) return;
+
+    FILE* fp = fopen(filename.c_str(), "w");
+    if (!fp) throw std::runtime_error("Cannot open wallet file for writing");
+
+    // 写入私钥 (参数 nullptr 表示不加密)
+    if (!PEM_write_ECPrivateKey(fp, pKey, nullptr, nullptr, 0, nullptr, nullptr)) {
+        fclose(fp);
+        throw std::runtime_error("Failed to save wallet to file");
+    }
+
+    fclose(fp);
+    std::cout << "Wallet saved to " << filename << std::endl;
+}
+
+// 从文件加载私钥
+bool Wallet::Load() {
+    FILE* fp = fopen(filename.c_str(), "r");
+    if (!fp) return false;
+
+    if (pKey) EC_KEY_free(pKey);
+
+    // 读取私钥
+    pKey = PEM_read_ECPrivateKey(fp, nullptr, nullptr, nullptr);
+    fclose(fp);
+
+    if (!pKey) return false;
+
+    std::cout << "Wallet loaded from " << filename << std::endl;
+    return true;
 }
 
 Bytes Wallet::GetPublicKey() const {

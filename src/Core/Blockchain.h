@@ -12,7 +12,11 @@ using UTXOKey = std::string;
 class Blockchain {
 private:
     std::vector<Block> chain;
-    uint32_t difficulty; // 全局难度 (简化版)
+   // uint32_t difficulty; // 全局难度 (简化版) 现改为动态调整
+
+    // [新增] 调整参数
+    const uint32_t DIFFICULTY_ADJUSTMENT_INTERVAL = 5; // 每 5 个块调整一次
+    const uint32_t BLOCK_GENERATION_INTERVAL = 2;      // 期望 2 秒出一个块
 
     // [新增] UTXO 集合: 记录全网所有未花费的钱
     // Key: "TxID_OutputIndex", Value: TxOut (包含金额和地址)
@@ -27,7 +31,7 @@ private:
 
 public:
     // [修改] 增加 minerAddress 参数，默认为空
-    Blockchain(uint32_t diff, const std::string& minerAddress = "");
+    Blockchain(const std::string& minerAddress = "");
 
     // 获取最新区块 (用于挖下一个块时引用)
     const Block& GetLatestBlock() const;
@@ -38,8 +42,15 @@ public:
     // [新增] 查询余额 (遍历 UTXO Set)
     int64_t GetBalance(const std::string& address) const;
 
+    // [新增]
+    void SaveToDisk(const std::string& filename) const;
+    void LoadFromDisk(const std::string& filename);
+
     // 打印链状态
     void PrintChain();
+
+    // [新增] 核心：获取下一个区块所需的难度
+    uint32_t GetDifficulty() const;
 };
 
 #endif //BITCOIN_CORE_BLOCKCHAIN_H

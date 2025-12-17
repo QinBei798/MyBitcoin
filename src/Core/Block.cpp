@@ -1,4 +1,5 @@
 ﻿#include "Block.h"
+#include "../Utils/Serialization.h"
 #include <iostream>
 #include <cstring>
 #include <algorithm> // for std::reverse if needed
@@ -50,37 +51,82 @@ Bytes Block::GetHash() const {
 // 真正的比特币代码在 main.cpp 里用 bignum 比较。
 bool Block::CheckPoW(uint32_t difficulty_zeros) const {
     Bytes hash = GetHash();
-    // 检查哈希值是小端序还是大端序？
-    // 在比特币内部计算通常用 Little Endian，但展示给人类看通常反转成 Big Endian。
-    // 这里我们简单起见，假设 hash 数组的最后一个字节是最高位（因为 Hash256 结果通常被视为大数）。
-    // 实际上，只要我们约定好即可。
-    // 让我们用最直观的方式：检查 hash 数组 **最后面** 的字节是否为 0 (因为比特币内部显示通常反转)。
-    // 为了通过下面的测试，我们简单检查哈希数组 **反转后** 的前导零个数。
 
-    Bytes hashReverse = hash;
-    std::reverse(hashReverse.begin(), hashReverse.end());
-
+    // 我们直接检查哈希数组的前 N 个字节
+    // 这样 ToHex(hash) 打印出来时，零就在最前面
     for (uint32_t i = 0; i < difficulty_zeros; i++) {
-        if (hashReverse[i] != 0) return false;
+        // 防止数组越界 (虽然难度不太可能达到 32)
+        if (i >= hash.size()) return false;
+
+        if (hash[i] != 0) return false;
     }
     return true;
 }
 
+// [修改] 挖矿函数
 void Block::Mine(uint32_t difficulty_zeros) {
-    std::cout << "Mining started... Target: " << difficulty_zeros << " leading zeros." << std::endl;
+    std::cout << "Mining started... Target: " << difficulty_zeros << " leading zeros (at the beginning)." << std::endl;
     nonce = 0;
+
+    // 获取开始时间，用于统计算力 (可选)
+    time_t start = time(nullptr);
+
     while (true) {
+        // 每 100,000 次尝试检查一下是否溢出或输出进度
+        if (nonce % 100000 == 0 && nonce != 0) {
+            // std::cout << "Nonce: " << nonce << "..." << std::endl; 
+        }
+
         if (CheckPoW(difficulty_zeros)) {
-            std::cout << "Block Mined! Nonce: " << nonce << std::endl;
-            std::cout << "Hash: " << ToHex(GetHash()) << std::endl;
+            time_t end = time(nullptr);
+            std::cout << "Block Mined!" << std::endl;
+            std::cout << "  - Nonce: " << nonce << std::endl;
+            std::cout << "  - Hash:  " << ToHex(GetHash()) << std::endl; // 这里打印出来应该是 000... 开头
+            std::cout << "  - Time:  " << (end - start) << " seconds" << std::endl;
             break;
         }
+
         nonce++;
 
-        // 防止溢出 (实际不太可能在测试中溢出)
+        // 防止 nonce 溢出 (虽然 uint32 能存 40 亿，很难溢出)
         if (nonce == 0) {
             std::cout << "Nonce overflow, updating timestamp..." << std::endl;
-            timestamp++;
+            timestamp = time(nullptr);
         }
+    }
+}
+
+void Block::Save(std::ostream& os) const {
+    // Header
+    WriteInt(os, version);
+    WriteBytes(os, prevBlockHash);
+    WriteBytes(os, merkleRoot);
+    WriteInt(os, timestamp);
+    WriteInt(os, bits);
+    WriteInt(os, nonce);
+
+    // Transactions
+    WriteInt(os, (uint32_t)transactions.size());
+    for (const auto& tx : transactions) {
+        tx.Save(os);
+    }
+}
+
+void Block::Load(std::istream& is) {
+    transactions.clear();
+
+    ReadInt(is, version);
+    ReadBytes(is, prevBlockHash);
+    ReadBytes(is, merkleRoot);
+    ReadInt(is, timestamp);
+    ReadInt(is, bits);
+    ReadInt(is, nonce);
+
+    uint32_t txCount;
+    ReadInt(is, txCount);
+    for (uint32_t i = 0; i < txCount; i++) {
+        Transaction tx;
+        tx.Load(is);
+        transactions.push_back(tx);
     }
 }

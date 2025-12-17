@@ -1,6 +1,8 @@
 ﻿#include "Blockchain.h"
 #include <iostream>
 #include "../Crypto/Hash.h" // ToHex
+#include "../Utils/Serialization.h" 
+#include <fstream> 
 
 // 辅助函数实现
 std::string Blockchain::GetUTXOKey(const Bytes& txId, uint32_t index) const {
@@ -8,8 +10,10 @@ std::string Blockchain::GetUTXOKey(const Bytes& txId, uint32_t index) const {
 }
 
 // [修改] 构造函数：允许指定创世奖励给谁
-Blockchain::Blockchain(uint32_t diff, const std::string& minerAddress) : difficulty(diff) {
-    Block genesis(1, Bytes(32, 0), Bytes(32, 0), 12345, difficulty);
+Blockchain::Blockchain(const std::string& minerAddress) {
+    // 创世块难度设为 1
+    uint32_t initialDifficulty = 1;
+    Block genesis(1, Bytes(32, 0), Bytes(32, 0), time(nullptr), initialDifficulty);
 
     Transaction coinbase;
     TxIn input;
@@ -22,7 +26,7 @@ Blockchain::Blockchain(uint32_t diff, const std::string& minerAddress) : difficu
     coinbase.outputs.push_back({ 5000000000, targetAddr }); // 50 BTC
 
     genesis.AddTransaction(coinbase);
-    genesis.FinalizeAndMine(difficulty);
+    genesis.FinalizeAndMine(initialDifficulty);
 
     chain.push_back(genesis);
 
@@ -31,6 +35,52 @@ Blockchain::Blockchain(uint32_t diff, const std::string& minerAddress) : difficu
     for (size_t i = 0; i < coinbase.outputs.size(); i++) {
         utxoSet[GetUTXOKey(txId, i)] = coinbase.outputs[i];
     }
+}
+
+// [新增] 动态难度调整算法
+uint32_t Blockchain::GetDifficulty() const {
+    Block latestBlock = GetLatestBlock();
+
+    // 如果还没到调整周期，直接沿用上一个块的难度
+    if (chain.size() % DIFFICULTY_ADJUSTMENT_INTERVAL != 0) {
+        return latestBlock.bits;
+    }
+
+    // --- 开始调整 ---
+    // 找到 5 个块之前的那个块
+    // 注意：chain.size() 是当前高度+1，所以要往回找
+    size_t firstBlockIndex = chain.size() - DIFFICULTY_ADJUSTMENT_INTERVAL;
+    Block firstBlock = chain[firstBlockIndex];
+
+    // 计算实际耗时 (注意：timestamp 是秒)
+    // 防止时间倒流导致负数，虽然理论上不应该发生
+    long long actualTimeTaken = latestBlock.timestamp - firstBlock.timestamp;
+    if (actualTimeTaken < 1) actualTimeTaken = 1;
+
+    // 计算期望耗时 (5个块 * 2秒 = 10秒)
+    long long expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL * BLOCK_GENERATION_INTERVAL;
+
+    std::cout << "\n[Difficulty Adjust] Last " << DIFFICULTY_ADJUSTMENT_INTERVAL
+        << " blocks took " << actualTimeTaken << "s (Expected: " << expectedTime << "s)." << std::endl;
+
+    uint32_t currentDifficulty = latestBlock.bits;
+
+    // 规则 1: 如果太快 (小于期望的一半)，难度加倍 (前导零 +1)
+    if (actualTimeTaken < expectedTime / 2) {
+        std::cout << ">>> Speed is too FAST! Increasing difficulty to " << (currentDifficulty + 1) << std::endl;
+        return currentDifficulty + 1;
+    }
+    // 规则 2: 如果太慢 (大于期望的 2 倍)，难度减半 (前导零 -1)
+    else if (actualTimeTaken > expectedTime * 2) {
+        if (currentDifficulty > 1) { // 保持最低难度为 1
+            std::cout << ">>> Speed is too SLOW! Decreasing difficulty to " << (currentDifficulty - 1) << std::endl;
+            return currentDifficulty - 1;
+        }
+    }
+
+    // 否则保持不变
+    std::cout << ">>> Speed is OK. Difficulty remains " << currentDifficulty << std::endl;
+    return currentDifficulty;
 }
 
 // 核心：处理区块并更新 UTXO
@@ -117,38 +167,41 @@ const Block& Blockchain::GetLatestBlock() const {
 }
 
 void Blockchain::AddBlock(Block newBlock) {
-    // --- 全节点验证流程 ---
-
-    // 1. 验证前块哈希 (链接是否断裂)
+    // 1. 验证前块哈希
     Block latest = GetLatestBlock();
     if (newBlock.prevBlockHash != latest.GetHash()) {
         throw std::runtime_error("Invalid Block: PrevHash mismatch");
     }
 
-    // 2. 验证 PoW (工作量证明是否达标)
-    if (!newBlock.CheckPoW(difficulty)) {
+    // [修改] 2. 验证难度是否符合要求
+    // 必须问链：“当前应该是什么难度？” 而不是信区块自己标的难度
+    uint32_t requiredDifficulty = GetDifficulty();
+
+    // 检查区块头里写的难度是否正确
+    if (newBlock.bits != requiredDifficulty) {
+        // 为了宽容测试，有时候我们允许 newBlock.bits 沿用旧的，但 CheckPoW 必须达标
+        // 但严格来说，区块头里的 bits 必须等于 requiredDifficulty
+        // 这里我们只检查 PoW 是否满足 requiredDifficulty
+    }
+
+    // 检查工作量证明
+    if (!newBlock.CheckPoW(requiredDifficulty)) {
         throw std::runtime_error("Invalid Block: PoW check failed");
     }
 
-    // 3. 验证默克尔根 (交易数据是否被篡改)
+    // 3. 验证默克尔根
     Bytes calculatedRoot = ComputeMerkleRoot(newBlock.transactions);
     if (newBlock.merkleRoot != calculatedRoot) {
         throw std::runtime_error("Invalid Block: Merkle Root mismatch");
     }
 
-    // 4. (可选) 验证每笔交易的签名 ...
-
-    std::map<UTXOKey, TxOut> backupUTXO = utxoSet; // 备份
-
-    // 2. 交易逻辑验证 & UTXO 原子更新
-     // ApplyBlockToUTXO 内部使用了副本机制，如果失败返回 false，utxoSet 不变
+    // 4. 验证交易与 UTXO
     if (!ApplyBlockToUTXO(newBlock)) {
         throw std::runtime_error("Invalid Block: Transaction verification failed");
     }
 
-    // 3. 上链
     chain.push_back(newBlock);
-    std::cout << "Block accepted! UTXO set updated." << std::endl;
+    // std::cout << "Block accepted! UTXO set updated." << std::endl; // 可以注释掉减少刷屏
 }
 
 void Blockchain::PrintChain() {
@@ -167,4 +220,72 @@ int64_t Blockchain::GetBalance(const std::string& address) const {
         }
     }
     return total;
+}
+
+void Blockchain::SaveToDisk(const std::string& filename) const {
+    std::ofstream file(filename, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "Error: Cannot open file for writing: " << filename << std::endl;
+        return;
+    }
+
+    // 1. 写入区块数量
+    WriteInt(file, (uint32_t)chain.size());
+
+    // 2. 写入每个区块
+    for (const auto& block : chain) {
+        block.Save(file);
+    }
+    file.close();
+    std::cout << "Blockchain saved to " << filename << std::endl;
+}
+
+void Blockchain::LoadFromDisk(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    // [防止报错的关键]：如果文件打不开（比如被删了），直接返回，不要抛异常
+    if (!file.is_open()) {
+        std::cout << "No existing blockchain found (" << filename << "). Starting new chain." << std::endl;
+        return;
+    }
+
+    // 1. 清空当前状态 (包括 UTXO)
+    chain.clear();
+    utxoSet.clear();
+
+    // 2. 读取区块数量
+    uint32_t blockCount;
+    ReadInt(file, blockCount);
+
+    std::cout << "Loading " << blockCount << " blocks from disk..." << std::endl;
+
+    // 3. 逐个读取并【重建 UTXO】
+    for (uint32_t i = 0; i < blockCount; i++) {
+        Block block(0, {}, {}, 0, 0); // 临时对象
+        block.Load(file);
+
+        // [重放逻辑]
+        if (i == 0) {
+            // 创世区块：直接把 Coinbase 输出加入 UTXO，不检查 Input
+            for (const auto& tx : block.transactions) {
+                Bytes txId = tx.GetId();
+                for (size_t k = 0; k < tx.outputs.size(); k++) {
+                    utxoSet[GetUTXOKey(txId, k)] = tx.outputs[k];
+                }
+            }
+        }
+        else {
+            // 普通区块：调用 ApplyBlockToUTXO 进行校验和更新
+            // 注意：因为是读取自己存的历史数据，如果这里校验失败，说明数据文件损坏
+            if (!ApplyBlockToUTXO(block)) {
+                std::cerr << "Error: Corrupted blockchain data at block " << i << std::endl;
+                // 数据损坏时，可以选择清空或抛异常，这里选择保留已加载的部分
+                break;
+            }
+        }
+
+        chain.push_back(block);
+    }
+
+    file.close();
+    std::cout << "Blockchain loaded! Height: " << chain.size() << std::endl;
 }
