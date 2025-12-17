@@ -212,3 +212,57 @@ PEM_read_ECPrivateKey(fp, nullptr, ...);        // 加载
 if (actualTime < expectedTime / 2) difficulty++; // 太快了，增加难度
 else if (actualTime > expectedTime * 2) difficulty--; // 太慢了，降低难度
 ```
+
+---
+
+## 📅 2025-12-17 | 钱包找零与签名逻辑重构 (Wallet Optimization)
+
+### 📝 今日进展
+- [x] 实现 **智能找零机制 (Change Output)**：自动计算输入总额与转账金额的差额，将多余资金返还给自己
+- [x] 实现 **动态难度调整**：每 5 个区块根据实际出块时间自动调整挖矿难度
+
+### 💻 技术细节
+
+**1. 解决签名"鸡生蛋"问题 (`src/Core/Transaction.cpp`)**
+交易 ID (Hash) 是签名的对象，但签名本身又存放在交易里。
+```cpp
+// includeSignature=false: 用于计算 TxID (待签名的"原始内容")
+// includeSignature=true:  用于网络传输 (包含签名的"完整内容")
+Bytes Transaction::Serialize(bool includeSignature) const {
+    // ...
+    if (includeSignature) {
+        PushBytes(data, in.signature);
+    } else {
+        PushUInt32(data, 0); // 占位或留空
+    }
+    // ...
+}
+```
+
+**2. 钱包找零逻辑 (`src/Wallet/Wallet.cpp`)**
+UTXO 模型不仅要指定钱给谁，还要指定剩下的钱去哪：
+```cpp
+// 找零 = 输入总和 - (转账金额 + 手续费)
+int64_t change = currentSum - targetTotal;
+
+// 防止粉尘攻击 (Dust): 只有找零大于 546 satoshi 才创建输出
+if (change > 546) {
+    tx.outputs.push_back({ change, myAddr }); // 返还给自己
+}
+```
+
+**3. 动态难度调整 (`src/Core/Blockchain.cpp`)**
+```cpp
+// 规则: 如果太快 (小于期望的一半)，难度加倍
+if (actualTimeTaken < expectedTime / 2) {
+    return currentDifficulty + 1;
+}
+// 规则: 如果太慢 (大于期望的 2 倍)，难度减半
+else if (actualTimeTaken > expectedTime * 2) {
+    return currentDifficulty - 1;
+}
+```
+
+**4. 架构限制说明**
+- **单密钥风险**：当前 Wallet 类与单个 wallet.dat 文件绑定，且只管理一对公私钥
+- **地址重用**：找零地址默认使用了发送方地址（虽简单但暴露隐私）。在生产环境中应生成新的找零地址 (HD Wallet)
