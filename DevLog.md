@@ -170,5 +170,45 @@ while (hashes.size() > 1) {
 
 ---
 
-**更新日期：2025-12-15**  
-**项目状态：开发中**
+---
+
+## 📅 2025-12-16 | 数据持久化与钱包存储 (Data Persistence)
+
+### 📝 今日进展
+- [x] 实现通用二进制序列化模块 `Serialization.h`
+- [x] 实现 **区块链持久化**：支持将整条链保存到磁盘 (`blockchain.dat`) 并断点续传
+- [x] 优化启动流程：系统启动时自动加载历史区块并重建 UTXO 集合
+
+### 💻 技术细节
+
+**1. 序列化工具 (`src/Utils/Serialization.h`)**
+封装了 C++ fstream 的读写操作，支持变长数据存储：
+```cpp
+// 写入格式: [Size][Data...]
+```
+
+**2. 区块链状态恢复 (`src/Core/Blockchain.cpp`)**
+加载时不仅读取区块数据，还需重放 (Replay) 整个 UTXO 集合，确保内存状态与磁盘数据一致：
+```cpp
+void Blockchain::LoadFromDisk(const std::string& filename) {
+    // ... 读取区块 ...
+    for (const auto& block : chain) {
+        if (isGenesis) { /* 初始化 UTXO */ }
+        else { ApplyBlockToUTXO(block); } // 重新校验并构建 UTXO
+    }
+}
+```
+
+**3. 钱包密钥存储 (`src/Wallet/Wallet.cpp`)**
+利用 OpenSSL 标准 PEM 接口安全存储私钥，兼容性强：
+```cpp
+PEM_write_ECPrivateKey(fp, pKey, nullptr, ...); // 保存
+PEM_read_ECPrivateKey(fp, nullptr, ...);        // 加载
+```
+
+**4. 动态难度调整算法 (`src/Core/Blockchain.cpp`)**
+实现了每 N 个区块根据出块时间动态调整难度目标 (bits) 的逻辑：
+```cpp
+if (actualTime < expectedTime / 2) difficulty++; // 太快了，增加难度
+else if (actualTime > expectedTime * 2) difficulty--; // 太慢了，降低难度
+```
