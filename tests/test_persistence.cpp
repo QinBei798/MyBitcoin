@@ -2,53 +2,57 @@
 #include "../src/Wallet/Wallet.h"
 #include <iostream>
 #include <cassert>
-#include <cstdio> // for remove
+#include <cstdio>
+// [关键] 解决 Windows 下 OpenSSL "no OPENSSL_Applink" 错误
+#include <openssl/applink.c>
 
 void TestPersistence() {
-    std::string dbFile = "blockchain.dat";
+    std::string dbFile = "blockchain_test.dat";
+    std::string walletFile = "alice_test.dat";
 
-    // 为了演示“数据消失程序不出错”，我们先手动删一下文件
     remove(dbFile.c_str());
+    remove(walletFile.c_str());
 
-    Wallet alice; // 注意：如果你还没有实现 Wallet 持久化，这里每次都是新 Alice
-    // 建议配合 Wallet 持久化一起测试，或者像下面这样只测区块链
-
+    // [修改] 自动生成
+    Wallet alice(walletFile);
     std::string aliceAddr = alice.GetAddress();
-    std::cout << "Alice Address: " << aliceAddr << std::endl;
 
-    // --- 阶段 1: 产生数据 ---
+    // --- 阶段 1: 运行并产生数据 ---
     {
-        std::cout << "\n[Phase 1] Mining..." << std::endl;
-        Blockchain chain(1, aliceAddr); // 创世块给 Alice
+        std::cout << "Phase 1: Mining blocks..." << std::endl;
+        // [修改] 移除 difficulty 参数 (1)
+        Blockchain chain(aliceAddr);
 
-        // 此时 Alice 有 50 BTC
-        // 我们保存并退出
         chain.SaveToDisk(dbFile);
     }
 
-    // --- 阶段 2: 恢复数据 ---
+    // --- 阶段 2: 模拟重启，读取数据 ---
     {
-        std::cout << "\n[Phase 2] Restoring..." << std::endl;
-        // 创建新链对象
-        Blockchain restoredChain(1);
+        std::cout << "\nPhase 2: Restoring from disk..." << std::endl;
+        // [修改] 移除 difficulty 参数，且使用默认构造函数
+        Blockchain restoredChain;
 
-        // 加载
         restoredChain.LoadFromDisk(dbFile);
 
-        // 验证 UTXO 是否重建成功
+        // 验证状态
         int64_t balance = restoredChain.GetBalance(aliceAddr);
+
+        // 注意：创世块是没有 PrevHash 的，size 应该是 32 (全0)
+        std::cout << "Restored Height: " << 1 << std::endl;
         std::cout << "Restored Alice Balance: " << balance << std::endl;
 
-        if (balance == 5000000000) {
-            std::cout << "[PASS] Persistence successful!" << std::endl;
-        }
-        else {
-            std::cerr << "[FAIL] UTXO rebuild failed!" << std::endl;
-        }
+        assert(balance == 5000000000);
+        std::cout << "Persistence Test Passed!" << std::endl;
     }
 }
 
 int main() {
-    TestPersistence();
+    try {
+        TestPersistence();
+    }
+    catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+        return 1;
+    }
     return 0;
 }

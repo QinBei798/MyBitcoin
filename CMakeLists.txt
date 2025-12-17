@@ -98,3 +98,10 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_difficulty.cpp")
     target_link_libraries(test_difficulty OpenSSL::SSL OpenSSL::Crypto)
     auto_copy_openssl_dlls(test_difficulty)
 endif()
+
+# --- 新增: 钱包交易构造测试 (验证找零) ---
+if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_wallet_tx.cpp")
+    add_executable(test_wallet_tx tests/test_wallet_tx.cpp ${SRC_FILES})
+    target_link_libraries(test_wallet_tx OpenSSL::SSL OpenSSL::Crypto)
+    auto_copy_openssl_dlls(test_wallet_tx)
+endif()

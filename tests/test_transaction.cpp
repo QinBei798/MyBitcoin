@@ -2,11 +2,16 @@
 #include "../src/Wallet/Wallet.h"
 #include <iostream>
 #include <cassert>
+#include <cstdio>
+#include <openssl/applink.c> 
 
 void TestTransactionSignature() {
+    // 清理环境
+    remove("alice_tx.dat");
+
     std::cout << "Creating Wallet for Alice..." << std::endl;
-    Wallet aliceWallet;
-    aliceWallet.GenerateNewKey();
+    // [修改] 自动生成
+    Wallet aliceWallet("alice_tx.dat");
     Bytes alicePub = aliceWallet.GetPublicKey();
 
     // 1. 构造一个模拟交易 (Input)
@@ -22,11 +27,8 @@ void TestTransactionSignature() {
     tx.outputs.push_back({ 50, "1BobAddress..." }); // 转给 Bob 50 BTC
 
     // 2. 签名流程
-    // 真正比特币的签名极其复杂 (SIGHASH_ALL)，这里演示核心原理：
-    // Alice 对“去除签名信息的交易数据”进行哈希，然后签名。
-
     // Step A: 获取待签名的哈希 (Message Hash)
-    // 简易做法：序列化当前交易(此时签名为空) -> Hash256
+    // 注意：我们在 Transaction.cpp 里修复了 GetId，它会自动处理签名置空的问题
     Bytes messageHash = tx.GetId();
     std::cout << "Transaction Hash to Sign: " << ToHex(messageHash) << std::endl;
 
@@ -43,11 +45,11 @@ void TestTransactionSignature() {
     std::cout << "Verifying transaction..." << std::endl;
     const TxIn& verifyInput = tx.inputs[0];
 
-    // 矿工拿到交易，提取出数据
-    // 注意：验证时，必须重新计算被签名的那个哈希 (即把签名拿掉后的哈希)
-    Transaction tempTx = tx;
-    tempTx.inputs[0].signature.clear(); // 清空签名以还原原始数据
-    Bytes checkHash = tempTx.GetId();
+    // 矿工拿到交易
+    // [修改] 验证时，我们需要手动计算“未签名状态”的哈希来比对
+    // 但由于我们改进了 Transaction::GetId()，它现在永远返回未签名的ID
+    // 所以直接调用 GetId() 即可，不需要手动清空签名的繁琐步骤了！
+    Bytes checkHash = tx.GetId();
 
     bool isValid = Wallet::Verify(verifyInput.publicKey, checkHash, verifyInput.signature);
 

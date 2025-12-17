@@ -1,6 +1,8 @@
 ﻿#include "Wallet.h"
 #include "Base58.h"
+#include "../Core/Blockchain.h"
 #include <iostream>
+#include <fstream> // 用于文件检查
 #include <openssl/ecdsa.h>
 #include <openssl/pem.h>
 
@@ -31,20 +33,53 @@ Wallet::~Wallet() {
     }
 }
 
-void Wallet::GenerateNewKey() {
-    // 1. 创建 secp256k1 曲线
+// 内部实现，不带检查
+void Wallet::GenerateNewKeyImpl() {
+    if (pKey) EC_KEY_free(pKey);
     pKey = EC_KEY_new_by_curve_name(NID_secp256k1);
-    if (!pKey) {
-        throw std::runtime_error("OpenSSL: Failed to create key structure");
-    }
-
-    // 2. 生成密钥对
-    if (!EC_KEY_generate_key(pKey)) {
-        throw std::runtime_error("OpenSSL: Failed to generate key");
-    }
-
-    // 设置为压缩格式 (现代比特币标准，虽然 v0.1 是非压缩的，但我们用现代的更好)
+    if (!pKey) throw std::runtime_error("OpenSSL error");
+    if (!EC_KEY_generate_key(pKey)) throw std::runtime_error("OpenSSL generate error");
     EC_KEY_set_conv_form(pKey, POINT_CONVERSION_COMPRESSED);
+}
+
+// [修改] 安全的公开接口
+void Wallet::GenerateNewKey(bool force) {
+    // 1. 检查内存中是否已有 Key
+    if (pKey != nullptr) {
+        if (!force) {
+            throw std::runtime_error("Safety Error: Wallet already has a key! Use GenerateNewKey(true) to overwrite.");
+        }
+        // 如果强制覆盖，建议先自动备份 (可选)
+        std::cout << "Warning: Overwriting existing key!" << std::endl;
+    }
+
+    // 2. 检查硬盘上文件是否存在 (防止误删 wallet.dat)
+    std::ifstream f(filename);
+    if (f.good() && !force) {
+        throw std::runtime_error("Safety Error: Wallet file '" + filename + "' already exists! Aborting.");
+    }
+    f.close();
+
+    GenerateNewKeyImpl();
+    Save(); // 生成后立即保存
+}
+
+// [新增] 备份功能
+void Wallet::Backup(const std::string& backupFilename) {
+    if (!pKey) throw std::runtime_error("No key to backup");
+
+    // 临时修改文件名进行保存
+    std::string oldName = filename;
+    filename = backupFilename;
+    try {
+        Save(); // 复用现有的 Save 逻辑
+        std::cout << "Wallet backed up to " << backupFilename << std::endl;
+    }
+    catch (...) {
+        filename = oldName; // 恢复文件名
+        throw;
+    }
+    filename = oldName;
 }
 
 // 保存私钥到文件 (PEM格式)
@@ -148,3 +183,79 @@ bool Wallet::Verify(const Bytes& pubKeyData, const Bytes& hash, const Bytes& sig
 
     return (result == 1);
 }
+
+// [新增] 创建交易核心逻辑 (优化版：增加手续费)
+Transaction Wallet::CreateTransaction(const std::string& toAddr, int64_t amount, const Blockchain& chain) {
+    // 1. 定义手续费 (简化起见固定为 0.00001 BTC)
+    // 在真实系统中，这应该根据交易字节大小计算
+    const int64_t TX_FEE = 1000;
+
+    // 2. 获取我的所有可用零钱 (UTXO)
+    std::string myAddr = GetAddress();
+    auto myUTXOs = chain.FindUTXOs(myAddr);
+
+    int64_t currentSum = 0;
+    int64_t targetTotal = amount + TX_FEE; // 我们需要凑够：转账金额 + 手续费
+    Transaction tx;
+
+    std::cout << "[Wallet] Selecting coins..." << std::endl;
+
+    // 3. 选币算法 (Coin Selection)
+    for (const auto& pair : myUTXOs) {
+        const std::string& utxoKey = pair.first;
+        const TxOut& output = pair.second;
+
+        // 解析 Key: "TxHash_Index"
+        size_t splitPos = utxoKey.find('_');
+        std::string txIdHex = utxoKey.substr(0, splitPos);
+        std::string indexStr = utxoKey.substr(splitPos + 1);
+
+        TxIn input;
+        input.prevTxId = FromHex(txIdHex);
+        input.prevIndex = std::stoul(indexStr);
+        input.publicKey = GetPublicKey();
+
+        tx.inputs.push_back(input);
+        currentSum += output.value;
+
+        std::cout << "  - Picked UTXO: " << output.value << " satoshi" << std::endl;
+
+        if (currentSum >= targetTotal) {
+            break;
+        }
+    }
+
+    // 4. 检查余额
+    if (currentSum < targetTotal) {
+        throw std::runtime_error("Error: Insufficient funds! Have: " + std::to_string(currentSum) +
+            " Need: " + std::to_string(targetTotal));
+    }
+
+    // 5. 构造 Output 1: 给收款人
+    tx.outputs.push_back({ amount, toAddr });
+
+    // 6. 构造 Output 2: 找零
+    // 找零 = 当前凑的钱 - (转给别人的 + 手续费)
+    // 剩下的那部分 (currentSum - amount - change) 自然就成了 implicit fee
+    int64_t change = currentSum - targetTotal;
+
+    // 防止产生“粉尘交易” (Dust): 如果找零太少(比如1 satoshi)，就不找了，全给矿工
+    if (change > 546) {
+        tx.outputs.push_back({ change, myAddr });
+        std::cout << "[Wallet] Change created: " << change << " satoshi return to me." << std::endl;
+    }
+    else if (change > 0) {
+        std::cout << "[Wallet] Change is too small (" << change << "), added to miner fee." << std::endl;
+    }
+
+    // 7. 签名
+    // 注意：此时 inputs 里的 signature 是空的，GetId() 计算的是未签名的哈希
+    Bytes txHash = tx.GetId();
+    for (auto& in : tx.inputs) {
+        in.signature = Sign(txHash);
+    }
+
+    std::cout << "[Wallet] Transaction signed. Fee: " << (currentSum - amount - change) << " satoshi." << std::endl;
+    return tx;
+}
+

@@ -26,8 +26,10 @@ public:
     std::vector<TxOut> outputs;
     uint32_t lockTime = 0;
 
-    // 序列化 (用于传输和计算Hash)
-    Bytes Serialize() const;
+    // [修改] 增加参数 includeSignature，默认 true
+     // includeSignature = true: 用于网络传输、存盘 (完整数据)
+     // includeSignature = false: 用于计算 TxID、生成签名 (排除签名数据)
+    Bytes Serialize(bool includeSignature = true) const;
 
     // 计算交易 ID (即 Hash256(Serialize))
     Bytes GetId() const;

@@ -46,6 +46,10 @@ public:
     void SaveToDisk(const std::string& filename) const;
     void LoadFromDisk(const std::string& filename);
 
+    // [新增] 找出属于某个地址的所有 UTXO
+    // 返回 map<UTXOKey, TxOut>
+    std::map<std::string, TxOut> FindUTXOs(const std::string& address) const;
+
     // 打印链状态
     void PrintChain();
 

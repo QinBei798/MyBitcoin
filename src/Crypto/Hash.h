@@ -28,4 +28,15 @@ std::string ToHex(const Bytes& data);
 // 6. 辅助工具：将字符串转为字节流
 Bytes ToBytes(const std::string& str);
 
+// [新增] 辅助工具：将16进制字符串转回字节数组 (用于解析 UTXO Key)
+inline Bytes FromHex(const std::string& hex) {
+    Bytes bytes;
+    for (unsigned int i = 0; i < hex.length(); i += 2) {
+        std::string byteString = hex.substr(i, 2);
+        char byte = (char)strtol(byteString.c_str(), nullptr, 16);
+        bytes.push_back(byte);
+    }
+    return bytes;
+}
+
 #endif //BITCOIN_CRYPTO_HASH_H

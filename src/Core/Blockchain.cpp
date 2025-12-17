@@ -289,3 +289,16 @@ void Blockchain::LoadFromDisk(const std::string& filename) {
     file.close();
     std::cout << "Blockchain loaded! Height: " << chain.size() << std::endl;
 }
+
+// [新增] 查找指定地址的所有 UTXO
+std::map<std::string, TxOut> Blockchain::FindUTXOs(const std::string& address) const {
+    std::map<std::string, TxOut> result;
+    // 遍历全网所有的 UTXO
+    for (const auto& pair : utxoSet) {
+        // pair.second 是 TxOut，里面包含 value 和 address
+        if (pair.second.address == address) {
+            result[pair.first] = pair.second;
+        }
+    }
+    return result;
+}

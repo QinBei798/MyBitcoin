@@ -11,36 +11,60 @@ void PushInt64(Bytes& data, int64_t v) {
     for (int i = 0; i < 8; i++) data.push_back((v >> (i * 8)) & 0xFF);
 }
 
-Bytes Transaction::Serialize() const {
+// [新增] 写入变长字节数组 (先写长度，再写数据)
+void PushBytes(Bytes& data, const Bytes& val) {
+    PushUInt32(data, (uint32_t)val.size());          // 1. 写入长度
+    data.insert(data.end(), val.begin(), val.end()); // 2. 写入内容
+}
+
+// [修改] 序列化：增加 includeSignature 参数
+Bytes Transaction::Serialize(bool includeSignature) const {
     Bytes data;
-    // 简化的序列化格式:
-    // [InCount] [In1] [In2]... [OutCount] [Out1] [Out2]...
 
     // 1. Inputs
-    PushUInt32(data, inputs.size());
+    PushUInt32(data, (uint32_t)inputs.size());
     for (const auto& in : inputs) {
+        // PrevTxId (固定 32 字节，不需要写长度，直接拼接)
         data.insert(data.end(), in.prevTxId.begin(), in.prevTxId.end());
+
+        // PrevIndex
         PushUInt32(data, in.prevIndex);
-        // 注意：计算交易ID时，签名部分通常需要特殊处理(置空)，这里为了演示最简逻辑，暂包含进去
-        // 在正式比特币中，TxID 的计算不包含 Witness 数据，但包含 ScriptSig
+
+        // [核心修正] 解决“鸡生蛋”问题
+        // 如果 includeSignature 为 false (计算ID时)，写入长度 0，不写签名内容
+        if (includeSignature) {
+            PushBytes(data, in.signature);
+        }
+        else {
+            PushUInt32(data, 0);
+        }
+
+        // 公钥 (通常视为交易意图的一部分，计算 ID 时也要包含)
+        PushBytes(data, in.publicKey);
     }
 
     // 2. Outputs
-    PushUInt32(data, outputs.size());
+    PushUInt32(data, (uint32_t)outputs.size());
     for (const auto& out : outputs) {
         PushInt64(data, out.value);
-        // 简单把地址放进去作为 ScriptPubKey
+
+        // 将地址作为锁定脚本 (ScriptPubKey)
         Bytes addrBytes = ToBytes(out.address);
-        data.insert(data.end(), addrBytes.begin(), addrBytes.end());
+        PushBytes(data, addrBytes); // 使用 PushBytes 自动加上长度前缀
     }
+
+    // 3. LockTime
+    PushUInt32(data, lockTime);
 
     return data;
 }
 
+// [修改] GetId: 永远使用“不含签名”的版本计算 ID
 Bytes Transaction::GetId() const {
-    return Hash256(Serialize());
+    return Hash256(Serialize(false));
 }
 
+// Save (存盘逻辑，包含所有信息)
 void Transaction::Save(std::ostream& os) const {
     // 1. Inputs
     WriteInt(os, (uint32_t)inputs.size());
@@ -60,6 +84,7 @@ void Transaction::Save(std::ostream& os) const {
     WriteInt(os, lockTime);
 }
 
+// Load (读盘逻辑)
 void Transaction::Load(std::istream& is) {
     inputs.clear();
     outputs.clear();
