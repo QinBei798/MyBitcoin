@@ -105,3 +105,13 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_wallet_tx.cpp")
     target_link_libraries(test_wallet_tx OpenSSL::SSL OpenSSL::Crypto)
     auto_copy_openssl_dlls(test_wallet_tx)
 endif()
+
+# =======================================================
+# 7. 最终主程序 (命令行客户端)
+# =======================================================
+if(EXISTS "${CMAKE_SOURCE_DIR}/src/main.cpp")
+    # 生成 MyBitcoin.exe
+    add_executable(MyBitcoin src/main.cpp ${SRC_FILES})
+    target_link_libraries(MyBitcoin OpenSSL::SSL OpenSSL::Crypto)
+    auto_copy_openssl_dlls(MyBitcoin)
+endif()
